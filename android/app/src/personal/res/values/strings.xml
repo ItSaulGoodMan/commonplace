@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The owner's own build sits next to the Play one, so it gets its own name. -->
+<resources>
+    <string name="app_name">My Commonplace</string>
+</resources>

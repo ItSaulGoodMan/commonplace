@@ -1,0 +1,165 @@
+{
+  "extract": "You are transcribing a short social media video or post (usually an Instagram reel) for someone's personal notes.\n\nReturn:\n- transcript: everything spoken, verbatim, in the original language. Drop filler sounds (um, uh). Use an empty string if nobody speaks or there is only music.\n- on_screen_text: each distinct piece of text that appears on screen or in the images, in order of appearance, without duplicates. Skip watermarks, usernames burned in by the app, and UI chrome.\n- visual_notes: one or two sentences about what is shown, only if it carries information the words don't (a demo, a recipe step, a chart, a place). Otherwise an empty string.\n- language: BCP-47 code of the main language, for example \"en\" or \"sr\".\n- creator_handle: the creator's @handle without the @ if it is visible or spoken, otherwise an empty string.",
+  "extractSchema": {
+    "type": "object",
+    "properties": {
+      "transcript": {
+        "type": "string"
+      },
+      "on_screen_text": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "visual_notes": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "creator_handle": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "transcript",
+      "on_screen_text",
+      "visual_notes",
+      "language",
+      "creator_handle"
+    ]
+  },
+  "distill": "Turn this saved reel into a note its owner will actually come back to.\n\nWrite like a sharp friend summarising it, not like marketing copy. Keep the creator's concrete specifics: numbers, names, tools, steps, quantities. Do not invent anything that isn't in the material. If the material is thin, the note is short.\n\nFields:\n- title: specific and plain, at most 60 characters, sentence case, no emoji, no clickbait, no trailing period.\n- summary: one or two sentences on what this teaches and why it's useful.\n- key_points: 2 to 6 standalone takeaways, one sentence each, most important first. For each one, \"highlight\" is the 2 to 6 word phrase from that same sentence that carries the idea, copied exactly, character for character.\n- actions: 0 to 4 concrete things to try, phrased as short imperatives. Use an empty list if the reel isn't actionable.\n- topic: the one broad shelf it belongs on, 1 or 2 words in Title Case, for example SEO, Cooking, Fitness, Career, Money, Productivity, Design, Travel.\n- tags: 1 to 4 lowercase specifics.\n\nWrite every field in {language}.\n\nMaterial:\n{material}",
+  "distillSameLanguage": "the same language as the material",
+  "distillSchema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "key_points": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "highlight": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "highlight"
+          ]
+        }
+      },
+      "actions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "topic": {
+        "type": "string"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "title",
+      "summary",
+      "key_points",
+      "actions",
+      "topic",
+      "tags"
+    ]
+  },
+  "read": "You are making a personal note from a short social media video or post (usually an Instagram reel).\n\nFirst, read everything in it:\n- transcript: everything spoken, verbatim, in the original language. Drop filler sounds (um, uh). Use an empty string if nobody speaks or there is only music.\n- on_screen_text: each distinct piece of text that appears on screen or in the images, in order of appearance, without duplicates. Skip watermarks, usernames burned in by the app, and UI chrome.\n- visual_notes: one or two sentences about what is shown, only if it carries information the words don't (a demo, a recipe step, a chart, a place). Otherwise an empty string.\n- language: BCP-47 code of the main language, for example \"en\" or \"sr\".\n- creator_handle: the creator's @handle without the @ if it is visible or spoken, otherwise an empty string.\n\nThen turn it into a note its owner will actually come back to. Write like a sharp friend summarising it, not like marketing copy. Keep the creator's concrete specifics: numbers, names, tools, steps, quantities. Do not invent anything that isn't in it. If there is little in it, the note is short.\n- title: specific and plain, at most 60 characters, sentence case, no emoji, no clickbait, no trailing period.\n- summary: one or two sentences on what this teaches and why it's useful.\n- key_points: 2 to 6 standalone takeaways, one sentence each, most important first. For each one, \"highlight\" is the 2 to 6 word phrase from that same sentence that carries the idea, copied exactly, character for character.\n- actions: 0 to 4 concrete things to try, phrased as short imperatives. Use an empty list if the reel isn't actionable.\n- topic: the one broad shelf it belongs on, 1 or 2 words in Title Case, for example SEO, Cooking, Fitness, Career, Money, Productivity, Design, Travel.\n- tags: 1 to 4 lowercase specifics.\n\nKeep transcript and on_screen_text in their original language. Write title, summary, key_points, actions, topic and tags in {language}.",
+  "readSameLanguage": "the same language as the video",
+  "readCaption": "\n\nThe owner added this caption or note when saving it:\n{caption}",
+  "readSchema": {
+    "type": "object",
+    "properties": {
+      "transcript": {
+        "type": "string"
+      },
+      "on_screen_text": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "visual_notes": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "creator_handle": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "key_points": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "highlight": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "highlight"
+          ]
+        }
+      },
+      "actions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "topic": {
+        "type": "string"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "transcript",
+      "on_screen_text",
+      "visual_notes",
+      "language",
+      "creator_handle",
+      "title",
+      "summary",
+      "key_points",
+      "actions",
+      "topic",
+      "tags"
+    ]
+  }
+}

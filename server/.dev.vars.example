@@ -1,0 +1,7 @@
+# Copy to .dev.vars for `npm run dev`. Mock values only: the dev setup talks to
+# tool/mock_gemini_server.py, which accepts any key starting with AQ. or AIza.
+GEMINI_API_KEY=AIza-mock-free-key
+GEMINI_PAID_API_KEY=AIza-mock-paid-key
+SESSION_SECRET=dev-only-session-secret-0123456789abcdef0123456789
+PLAY_SERVICE_ACCOUNT=
+ADMIN_TOKEN=dev-admin-token-0123456789

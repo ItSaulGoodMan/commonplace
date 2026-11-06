@@ -1,0 +1,88 @@
+// Commonplace API: makes notes for people signed in with Google, using one
+// shared Gemini key, so nobody has to bring their own.
+//
+// Secrets (never in this file): see README.md, "Secrets".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "commonplace-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "commonplace",
+      // From `npx wrangler d1 create commonplace`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "GEMINI_BASE_URL": "https://generativelanguage.googleapis.com",
+    // The shared free key's model, and the paid key's model for subscribers.
+    // Flash-Lite for both: about a quarter of Flash's price.
+    "GEMINI_MODEL": "gemini-flash-lite-latest",
+    "GEMINI_PAID_MODEL": "gemini-flash-lite-latest",
+    // Thinking is billed as output. MINIMAL for Flash-Lite; Flash's lowest
+    // is LOW. Empty leaves the model's default.
+    "GEMINI_THINKING": "MINIMAL",
+    "GEMINI_PAID_THINKING": "MINIMAL",
+    // The paid model's price per million tokens (USD), from
+    // https://aistudio.google.com/docs/pricing. Update when Google changes it.
+    "PAID_PRICE_INPUT_PER_M": "0.30",
+    "PAID_PRICE_AUDIO_PER_M": "0.30",
+    "PAID_PRICE_OUTPUT_PER_M": "2.50",
+    // Most a subscriber may cost on the paid key per month (USD). Keep it
+    // well under what a subscription brings in after Google's 15%; past it,
+    // the subscriber's notes go to the free key.
+    "PLUS_MONTHLY_BUDGET_USD": "1.00",
+    "FREE_NOTES_PER_DAY": "3",
+    "PLUS_NOTES_PER_DAY": "25",
+    "REWRITES_PER_DAY": "20",
+    "UPLOADS_PER_DAY": "60",
+    // OAuth "Web application" client ID(s) the app asks Google sign-in for,
+    // comma-separated. ID tokens for any other audience are refused.
+    "GOOGLE_CLIENT_IDS": "",
+    "PLAY_PACKAGE_NAME": "com.nemanjapejic.commonplace",
+    "PLAY_PRODUCT_IDS": "commonplace_plus",
+    // Never "1" in production: accepts made-up sign-ins and purchases.
+    "DEV_FAKES": "0"
+  },
+  "env": {
+    // Local testing against tool/mock_gemini_server.py:
+    //   npm run dev   (http://0.0.0.0:8790, the emulator sees it as 10.0.2.2:8790)
+    "dev": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "commonplace",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "vars": {
+        "GEMINI_BASE_URL": "http://127.0.0.1:8787",
+        "GEMINI_MODEL": "gemini-flash-lite-latest",
+        "GEMINI_PAID_MODEL": "gemini-flash-lite-latest",
+        "GEMINI_THINKING": "MINIMAL",
+        "GEMINI_PAID_THINKING": "MINIMAL",
+        "PAID_PRICE_INPUT_PER_M": "0.30",
+        "PAID_PRICE_AUDIO_PER_M": "0.30",
+        "PAID_PRICE_OUTPUT_PER_M": "2.50",
+        "PLUS_MONTHLY_BUDGET_USD": "1.00",
+        "FREE_NOTES_PER_DAY": "3",
+        "PLUS_NOTES_PER_DAY": "25",
+        "REWRITES_PER_DAY": "20",
+        "UPLOADS_PER_DAY": "60",
+        "GOOGLE_CLIENT_IDS": "dev-client",
+        "PLAY_PACKAGE_NAME": "com.nemanjapejic.commonplace",
+        "PLAY_PRODUCT_IDS": "commonplace_plus",
+        "DEV_FAKES": "1"
+      }
+    }
+  }
+}

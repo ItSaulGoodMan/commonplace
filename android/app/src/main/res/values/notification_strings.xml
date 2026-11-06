@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="making_notes">Making your note</string>
+    <string name="making_notes_detail">You can leave the app; the note keeps going.</string>
+    <string name="making_notes_channel">Notes being made</string>
+</resources>

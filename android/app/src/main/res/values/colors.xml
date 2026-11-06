@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#F4F6F9</color>
+    <color name="ink">#1D2B4F</color>
+    <color name="highlighter">#FFE45C</color>
+    <color name="icon_background">#1D2B4F</color>
+</resources>
