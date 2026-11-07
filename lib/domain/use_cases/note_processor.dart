@@ -68,6 +68,28 @@ class NoteProcessor extends ChangeNotifier {
   /// Instagram's "slow down" is taken more seriously than Gemini's.
   static const instagramCooldown = Duration(minutes: 10);
 
+  /// Until when notes that need Instagram wait because it asked to slow
+  /// down. Notes that already have their video are made meanwhile.
+  DateTime? _instagramPausedUntil;
+  bool get instagramPaused {
+    final until = _instagramPausedUntil;
+    return until != null && _now().isBefore(until);
+  }
+
+  /// Notes the owner tapped Start now on, the latest first.
+  final _firstUp = <int>[];
+
+  /// Notes that were being made when the app last closed. They go after the
+  /// rest, so a reel that brings the app down can't hold up the others.
+  final _lastUp = <int>{};
+
+  /// The note the queue is on, from the moment it's picked.
+  int? _currentId;
+
+  /// Stop puts the note in hand back in the queue instead of failing it:
+  /// another note was started ahead of it.
+  bool _requeueOnStop = false;
+
   /// A dropped connection (Wi-Fi to mobile data, a tunnel) is tried once
   /// more after this pause before the note is marked as failed.
   final Duration retryDelay;
@@ -108,9 +130,79 @@ class NoteProcessor extends ChangeNotifier {
   /// Try again. It isn't retried on its own.
   void stop(int id) {
     final cancel = _cancel;
-    if (_activeId != id || cancel == null || cancel.isCompleted) return;
+    if (_currentId != id || cancel == null || cancel.isCompleted) return;
     cancel.complete();
     notifyListeners();
+  }
+
+  /// Takes note [id] out of the queue. If it's being made, that stops now.
+  /// Either way it waits for Try again and isn't retried on its own, so a
+  /// reel that can't be read never holds up the others.
+  Future<void> cancel(int id) async {
+    _firstUp.remove(id);
+    final note = await _notes.find(id);
+    if (_currentId == id) {
+      stop(id);
+      return;
+    }
+    if (note?.status == NoteStatus.queued) {
+      await _notes.setStatus(id, NoteStatus.failed, error: WorkStopped.message);
+    }
+  }
+
+  /// Makes note [id] now, ahead of the others. The note being made, if
+  /// any, goes back in the queue, next in line, and starts over after this
+  /// one. Returns why it can't start yet, or null.
+  Future<String?> startNow(int id) async {
+    if (_currentId == id) return null;
+    final note = await _notes.find(id);
+    if (note == null ||
+        !(note.status == NoteStatus.queued ||
+            note.status == NoteStatus.failed)) {
+      return null;
+    }
+    if (note.needsInstagramFetch && instagramPaused) {
+      return InstagramFailure.rateLimited.message;
+    }
+    _firstUp
+      ..remove(id)
+      ..insert(0, id);
+    _lastUp.remove(id);
+    _autoRetries.remove(id);
+    _pausedUntil = null;
+    if (note.status != NoteStatus.queued) {
+      await _notes.setStatus(id, NoteStatus.queued);
+    }
+    final current = _currentId;
+    final cancel = _cancel;
+    if (current != null &&
+        current != id &&
+        cancel != null &&
+        !cancel.isCompleted) {
+      _firstUp.insert(1, current);
+      _requeueOnStop = true;
+      cancel.complete();
+      notifyListeners();
+    }
+    unawaited(kick());
+    return null;
+  }
+
+  /// The next note to make: the ones started by hand, then the oldest
+  /// waiting, then the ones cut off when the app last closed. Notes that
+  /// need Instagram wait while it asked to slow down.
+  Future<Note?> _nextNote() async {
+    final queued = await _notes.queued();
+    final byId = {for (final n in queued) n.id: n};
+    _firstUp.removeWhere((id) => !byId.containsKey(id));
+    final paused = instagramPaused;
+    bool canStart(Note n) => !(paused && n.needsInstagramFetch);
+    for (final id in _firstUp) {
+      if (canStart(byId[id]!)) return byId[id];
+    }
+    final startable = queued.where(canStart);
+    return startable.where((n) => !_lastUp.contains(n.id)).firstOrNull ??
+        startable.firstOrNull;
   }
 
   /// [work], unless Stop is tapped first.
@@ -146,7 +238,7 @@ class NoteProcessor extends ChangeNotifier {
 
   /// Call at startup: requeues anything interrupted, then starts work.
   Future<void> resume() async {
-    await _notes.requeueInterrupted();
+    _lastUp.addAll(await _notes.requeueInterrupted());
     await _requeueTransient();
     unawaited(kick());
   }
@@ -186,7 +278,7 @@ class NoteProcessor extends ChangeNotifier {
     try {
       while (true) {
         _lookAgain = false;
-        final next = await _notes.nextQueued();
+        final next = await _nextNote();
         if (next == null) {
           if (_lookAgain) continue;
           break;
@@ -199,11 +291,17 @@ class NoteProcessor extends ChangeNotifier {
         }
         _retryReason = null;
         _cancel = Completer<void>();
+        _requeueOnStop = false;
+        _currentId = next.id;
+        _firstUp.remove(next.id);
+        _lastUp.remove(next.id);
         final keepGoing = await _process(next);
+        _currentId = null;
         if (!keepGoing) break;
       }
     } finally {
       _running = false;
+      _currentId = null;
       _activeId = null;
       _stage = null;
       _update = null;
@@ -278,8 +376,13 @@ class NoteProcessor extends ChangeNotifier {
     return changed ? paths : null;
   }
 
-  /// The note waits for Try again; Stop is never retried on its own.
+  /// The note waits for Try again; Stop is never retried on its own. If
+  /// another note was started ahead of it, it goes back in the queue.
   Future<bool> _stopped(Note note) async {
+    if (_requeueOnStop) {
+      await _notes.setStatus(note.id, NoteStatus.queued);
+      return true;
+    }
     await _notes.setStatus(
       note.id,
       NoteStatus.failed,
@@ -403,9 +506,11 @@ class NoteProcessor extends ChangeNotifier {
       );
       switch (e.failure) {
         case InstagramFailure.rateLimited:
+          // Notes that need Instagram wait; the rest go on.
           await _notes.setStatus(note.id, NoteStatus.queued);
-          _pausedUntil = _now().add(instagramCooldown);
-          return false;
+          _instagramPausedUntil = _now().add(instagramCooldown);
+          notifyListeners();
+          return true;
         case InstagramFailure.signedOut || InstagramFailure.notFound:
           // The owner can still add the video by hand.
           await _notes.setStatus(

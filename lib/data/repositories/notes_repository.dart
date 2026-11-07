@@ -45,6 +45,19 @@ class NotesRepository {
     return row == null ? null : _toNote(row);
   }
 
+  /// Every note waiting its turn, oldest first.
+  Future<List<Note>> queued() async {
+    final rows =
+        await (_db.select(_db.notes)
+              ..where((t) => t.status.equalsValue(NoteStatus.queued))
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.createdAt),
+                (t) => OrderingTerm.asc(t.id),
+              ]))
+            .get();
+    return rows.map(_toNote).toList(growable: false);
+  }
+
   Future<int> countQueued() async {
     final count = _db.notes.id.count();
     final query = _db.selectOnly(_db.notes)
@@ -256,11 +269,22 @@ class NotesRepository {
     NotesCompanion(status: Value(status), errorMessage: Value(error)),
   );
 
-  /// Puts every note that was interrupted mid-read back in the queue.
-  Future<void> requeueInterrupted() =>
-      (_db.update(_db.notes)
-            ..where((t) => t.status.equalsValue(NoteStatus.processing)))
-          .write(const NotesCompanion(status: Value(NoteStatus.queued)));
+  /// Puts every note that was interrupted mid-read back in the queue, and
+  /// says which they were.
+  Future<List<int>> requeueInterrupted() async {
+    final rows =
+        await (_db.selectOnly(_db.notes)
+              ..addColumns([_db.notes.id])
+              ..where(_db.notes.status.equalsValue(NoteStatus.processing)))
+            .get();
+    final ids = [for (final r in rows) r.read(_db.notes.id)!];
+    if (ids.isNotEmpty) {
+      await (_db.update(_db.notes)..where((t) => t.id.isIn(ids))).write(
+        const NotesCompanion(status: Value(NoteStatus.queued)),
+      );
+    }
+    return ids;
+  }
 
   Future<void> saveExtraction(
     int id, {

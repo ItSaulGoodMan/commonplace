@@ -47,7 +47,7 @@ class NoteScreen extends StatelessWidget {
   }
 }
 
-enum _Menu { share, rewrite, instagram, copyTranscript, report, delete }
+enum _Menu { copy, share, rewrite, instagram, copyTranscript, report, delete }
 
 class _NoteScaffold extends StatelessWidget {
   const _NoteScaffold({required this.viewModel, required this.note});
@@ -74,6 +74,11 @@ class _NoteScaffold extends StatelessWidget {
             tooltip: 'More',
             onSelected: (choice) => _onMenu(context, choice),
             itemBuilder: (_) => [
+              if (note.isReady)
+                const PopupMenuItem(
+                  value: _Menu.copy,
+                  child: Text('Copy note'),
+                ),
               if (note.isReady)
                 const PopupMenuItem(
                   value: _Menu.share,
@@ -191,6 +196,11 @@ class _NoteScaffold extends StatelessWidget {
   Future<void> _onMenu(BuildContext context, _Menu choice) async {
     final messenger = ScaffoldMessenger.of(context);
     switch (choice) {
+      case _Menu.copy:
+        await Clipboard.setData(
+          ClipboardData(text: viewModel.asFullMarkdown()),
+        );
+        messenger.showSnackBar(const SnackBar(content: Text('Note copied.')));
       case _Menu.share:
         await SharePlus.instance.share(
           ShareParams(text: viewModel.asMarkdown(), subject: note.displayTitle),
@@ -567,6 +577,15 @@ class _StatusPanel extends StatelessWidget {
     if (paths.isNotEmpty) await viewModel.attach(paths);
   }
 
+  Future<void> _startNow(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final why = await viewModel.startNow();
+    if (why == null) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(why), persist: false));
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = Palette.of(context);
@@ -619,13 +638,32 @@ class _StatusPanel extends StatelessWidget {
       ),
       NoteStatus.queued => (
         'Waiting its turn',
-        'This note will be made as soon as the ones before it are done. If you have no Gemini key yet, add it in Settings.',
-        null,
+        viewModel.waitsForInstagram
+            ? 'Instagram asked Commonplace to slow down. This note is made in a few minutes, after the ones that already have their video.'
+            : 'This note will be made as soon as the ones before it are done. Tap Start now to make it first. If you have no Gemini key yet, add it in Settings.',
+        Wrap(
+          spacing: Space.m,
+          runSpacing: Space.s,
+          children: [
+            if (!viewModel.waitsForInstagram)
+              FilledButton(
+                onPressed: () => _startNow(context),
+                child: const Text('Start now'),
+              ),
+            OutlinedButton(
+              onPressed: viewModel.cancel,
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
       ),
       NoteStatus.processing => (
         viewModel.workStatus.headline,
         viewModel.workStatus.explanation,
-        OutlinedButton(onPressed: viewModel.stop, child: const Text('Stop')),
+        OutlinedButton(
+          onPressed: viewModel.cancel,
+          child: const Text('Cancel'),
+        ),
       ),
       NoteStatus.failed => (
         "Couldn't make this note",

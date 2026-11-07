@@ -1,7 +1,7 @@
 name: commonplace
 description: "Commonplace: turn the reels you save into notes you actually reread."
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.1.0+3
 
 environment:
   sdk: ^3.13.7

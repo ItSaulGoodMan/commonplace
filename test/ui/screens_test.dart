@@ -25,6 +25,7 @@ import 'package:commonplace/ui/features/settings/instagram_section.dart';
 import 'package:drift/drift.dart' show DatabaseConnection, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -197,6 +198,45 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
+Future<void> _pumpHome(WidgetTester tester, _World world) async {
+  await tester.pumpWidget(
+    world.wrap(
+      (context) => ChangeNotifierProvider(
+        create: (_) => HomeViewModel(
+          notes: world.notes,
+          settings: world.settings,
+          processor: world.processor,
+          capture: world.capture,
+          instagram: world.instagram,
+          sync: world.sync,
+          account: world.account,
+          ai: world.ai,
+        ),
+        child: Consumer<HomeViewModel>(
+          builder: (_, vm, _) => HomeScreen(viewModel: vm),
+        ),
+      ),
+    ),
+  );
+  await _settle(tester);
+}
+
+/// What the app puts on the clipboard.
+List<String> _mockClipboard(WidgetTester tester) {
+  final copied = <String>[];
+  final messenger = tester.binding.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+    if (call.method == 'Clipboard.setData') {
+      copied.add((call.arguments as Map)['text'] as String);
+    }
+    return null;
+  });
+  addTearDown(
+    () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+  );
+  return copied;
+}
+
 Future<void> _teardown(WidgetTester tester, _World world) async {
   await tester.pumpWidget(const SizedBox());
   await world.db.close();
@@ -351,6 +391,64 @@ void main() {
     await tester.pump();
     expect(find.text('Write titles like questions'), findsNothing);
     expect(find.text('Batch cook on Sundays'), findsOneWidget);
+    await _teardown(tester, world);
+  });
+
+  testWidgets('home copies a note, or all of them, in one tap', (tester) async {
+    final copied = _mockClipboard(tester);
+    final world = await _World.create();
+    await world.addReadyNote(
+      title: 'Write titles like questions',
+      created: DateTime.now().subtract(const Duration(days: 2)),
+    );
+    await world.addReadyNote(
+      title: 'Batch cook on Sundays',
+      topic: 'Cooking',
+      created: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    await _pumpHome(tester, world);
+
+    expect(find.text('2 notes'), findsOneWidget);
+    await tester.tap(find.byTooltip('Copy note').first);
+    await tester.pump(const Duration(seconds: 1));
+    expect(copied.single, startsWith('# Batch cook on Sundays\n'));
+    expect(copied.single, contains('## Key points'));
+    expect(find.text('Note copied.'), findsOneWidget);
+
+    await tester.tap(find.text('Copy all'));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(copied, hasLength(2));
+    expect(copied.last, contains('# Write titles like questions'));
+    expect(copied.last, contains('# Batch cook on Sundays'));
+    expect(find.text('Copied 2 notes.'), findsOneWidget);
+
+    // On a shelf, Copy all copies what the shelf shows.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Cooking'));
+    await tester.pump();
+    expect(find.text('1 note in Cooking'), findsOneWidget);
+    await tester.tap(find.text('Copy all'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(copied.last, isNot(contains('Write titles like questions')));
+    await _teardown(tester, world);
+  });
+
+  testWidgets('a waiting note can be started now or cancelled', (tester) async {
+    final world = await _World.create();
+    final id = await world.notes.create(
+      status: NoteStatus.queued,
+      sourceKind: SourceKind.text,
+      caption: 'Stretch before you run.',
+    );
+    await _pumpHome(tester, world);
+
+    expect(find.text('Waiting its turn'), findsOneWidget);
+    expect(find.text('Start now'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await _settle(tester);
+    expect((await world.notes.find(id))!.status, NoteStatus.failed);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Start now'), findsNothing);
     await _teardown(tester, world);
   });
 

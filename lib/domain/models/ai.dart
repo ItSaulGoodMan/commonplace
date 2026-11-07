@@ -54,7 +54,7 @@ enum AiFailure {
 class WorkStopped implements Exception {
   const WorkStopped();
 
-  static const message = 'Stopped. Tap Try again to make this note.';
+  static const message = 'Cancelled. Tap Try again to make this note.';
 
   @override
   String toString() => 'WorkStopped';

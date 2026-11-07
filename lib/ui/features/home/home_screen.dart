@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -83,6 +84,13 @@ class HomeScreen extends StatelessWidget {
                               gutter: gutter,
                             ),
                           ),
+                        if (viewModel.notes.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _CopyAllRow(
+                              viewModel: viewModel,
+                              gutter: gutter,
+                            ),
+                          ),
                         SliverList.list(
                           children: [
                             for (final note in viewModel.attention)
@@ -98,6 +106,11 @@ class HomeScreen extends StatelessWidget {
                                 note: note,
                                 now: viewModel.now,
                                 gutter: gutter,
+                                onCopy: () => _copy(
+                                  context,
+                                  viewModel.copyText(note),
+                                  'Note copied.',
+                                ),
                               ),
                             if (viewModel.notes.isEmpty &&
                                 viewModel.query.isNotEmpty)
@@ -142,6 +155,81 @@ Future<void> _checkSaves(BuildContext context, HomeViewModel viewModel) async {
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message), persist: false));
+}
+
+/// Makes [note] now, ahead of the others, or says why it can't yet.
+Future<void> _startNow(
+  BuildContext context,
+  HomeViewModel viewModel,
+  Note note,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final why = await viewModel.startNow(note);
+  if (why == null) return;
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(why), persist: false));
+}
+
+/// Puts [text] on the clipboard and says [done], or that it didn't work.
+Future<void> _copy(BuildContext context, String text, String done) async {
+  final messenger = ScaffoldMessenger.of(context);
+  var message = done;
+  try {
+    await Clipboard.setData(ClipboardData(text: text));
+  } on Object catch (e) {
+    debugPrint('Copy failed: $e');
+    message = "Couldn't copy that. Pick a topic to copy fewer notes.";
+  }
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message), persist: false));
+}
+
+Future<void> _copyAll(BuildContext context, HomeViewModel viewModel) {
+  final total = viewModel.notes.length;
+  final copied = viewModel.copyAll();
+  final String done;
+  if (copied.count < total) {
+    done =
+        'Copied the newest ${copied.count} of $total notes, without what '
+        "was said. That's as much as fits at once.";
+  } else if (!copied.withMaterial) {
+    done =
+        'Copied $total notes, without what was said: with it they are too '
+        'long to copy at once.';
+  } else {
+    done = total == 1 ? 'Note copied.' : 'Copied $total notes.';
+  }
+  return _copy(context, copied.text, done);
+}
+
+/// How many notes are listed, and one tap to copy them all, to paste into
+/// an AI chat.
+class _CopyAllRow extends StatelessWidget {
+  const _CopyAllRow({required this.viewModel, required this.gutter});
+
+  final HomeViewModel viewModel;
+  final double gutter;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      // The button's own padding lines its label up with the page edge.
+      padding: EdgeInsets.fromLTRB(gutter, 0, gutter - 16, Space.xs),
+      child: Row(
+        children: [
+          Expanded(child: Text(viewModel.listLabel, style: text.bodySmall)),
+          TextButton.icon(
+            onPressed: () => _copyAll(context, viewModel),
+            icon: const Icon(Icons.copy_all_rounded, size: 20),
+            label: const Text('Copy all'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TopBar extends StatefulWidget {
@@ -385,14 +473,62 @@ class _NoteItem extends StatelessWidget {
     required this.note,
     required this.now,
     required this.gutter,
+    required this.onCopy,
   });
 
   final Note note;
   final DateTime now;
   final double gutter;
+  final VoidCallback onCopy;
+
+  /// How far the copy button's 48 dp tap area reaches past its 20 dp icon.
+  static const _iconInset = 14.0;
 
   @override
   Widget build(BuildContext context) {
+    final palette = Palette.of(context);
+    return InkWell(
+      onTap: () => context.push('/note/${note.id}'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: gutter),
+            child: Divider(height: 1, thickness: 1, color: palette.rule),
+          ),
+          Padding(
+            // The copy icon sits on the title's first line and the page
+            // edge; the rest of its tap area reaches into the padding.
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              Space.l + 2 - Space.m,
+              gutter - _iconInset,
+              Space.l + 2,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: Space.m),
+                    child: _content(context),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onCopy,
+                  icon: const Icon(Icons.content_copy_rounded, size: 20),
+                  color: palette.inkSoft,
+                  tooltip: 'Copy note',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final palette = Palette.of(context);
     final text = Theme.of(context).textTheme;
     final first = note.keyPoints.isNotEmpty ? note.keyPoints.first : null;
@@ -401,62 +537,52 @@ class _NoteItem extends StatelessWidget {
       'saved ${relativeAge(note.createdAt, now)}',
     ].join(', ');
 
-    return InkWell(
-      onTap: () => context.push('/note/${note.id}'),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: palette.rule)),
-        ),
-        margin: EdgeInsets.symmetric(horizontal: gutter),
-        padding: const EdgeInsets.symmetric(vertical: Space.l + 2),
-        child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    note.displayTitle,
-                    style: TypeScale.casual(
-                      19,
-                      weight: 660,
-                      height: 1.25,
-                    ).copyWith(color: palette.ink),
-                  ),
-                ),
-                if (note.starred)
-                  Padding(
-                    padding: const EdgeInsets.only(left: Space.s, top: 2),
-                    child: Icon(
-                      Icons.star_rounded,
-                      size: 20,
-                      color: palette.ink,
-                      semanticLabel: 'Starred',
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: Space.s),
-            if (first != null)
-              HighlightedText(
-                first.text,
-                highlight: first.highlight,
-                maxLines: 3,
-                style: text.bodyMedium!.copyWith(color: palette.ink),
-              )
-            else if (note.summary case final s? when s.isNotEmpty)
-              Text(
-                s,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: text.bodyMedium,
+            Expanded(
+              child: Text(
+                note.displayTitle,
+                style: TypeScale.casual(
+                  19,
+                  weight: 660,
+                  height: 1.25,
+                ).copyWith(color: palette.ink),
               ),
-            const SizedBox(height: Space.s),
-            Text(meta, style: text.bodySmall),
+            ),
+            if (note.starred)
+              Padding(
+                padding: const EdgeInsets.only(left: Space.s, top: 2),
+                child: Icon(
+                  Icons.star_rounded,
+                  size: 20,
+                  color: palette.ink,
+                  semanticLabel: 'Starred',
+                ),
+              ),
           ],
         ),
-      ),
+        const SizedBox(height: Space.s),
+        if (first != null)
+          HighlightedText(
+            first.text,
+            highlight: first.highlight,
+            maxLines: 3,
+            style: text.bodyMedium!.copyWith(color: palette.ink),
+          )
+        else if (note.summary case final s? when s.isNotEmpty)
+          Text(
+            s,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodyMedium,
+          ),
+        const SizedBox(height: Space.s),
+        Text(meta, style: text.bodySmall),
+      ],
     );
   }
 }
@@ -480,6 +606,7 @@ class _AttentionItem extends StatelessWidget {
     final text = Theme.of(context).textTheme;
 
     final work = viewModel.workStatus(note);
+    final instagramWait = note.needsInstagramFetch && viewModel.instagramPaused;
     final (String status, Widget? action) = switch (note.status) {
       NoteStatus.needsMedia => (
         note.errorMessage ?? 'Waiting for the video',
@@ -498,15 +625,33 @@ class _AttentionItem extends StatelessWidget {
           AiFailure.signedOut => 'Waiting for you to sign in',
           AiFailure.dailyLimit || AiFailure.sharedLimit => 'Made tomorrow',
           AiFailure.notConfigured => 'Waiting for the server',
+          _ when instagramWait =>
+            'Instagram asked to slow down. '
+                'Made in a few minutes',
           _ => 'Waiting its turn',
         },
-        null,
+        Wrap(
+          spacing: Space.s,
+          runSpacing: Space.s,
+          children: [
+            // Nothing can start while the whole queue waits (no key...).
+            if (viewModel.blockedReason == null && !instagramWait)
+              OutlinedButton(
+                onPressed: () => _startNow(context, viewModel, note),
+                child: const Text('Start now'),
+              ),
+            TextButton(
+              onPressed: () => viewModel.cancel(note),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
       ),
       NoteStatus.processing => (
         work.short,
         OutlinedButton(
-          onPressed: () => viewModel.stop(note),
-          child: const Text('Stop'),
+          onPressed: () => viewModel.cancel(note),
+          child: const Text('Cancel'),
         ),
       ),
       NoteStatus.failed => (

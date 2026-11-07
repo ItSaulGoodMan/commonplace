@@ -400,6 +400,40 @@ void main() {
     expect((await w.notes.find(note.id))!.status, NoteStatus.ready);
   });
 
+  test(
+    'while Instagram asks to slow down, notes with their video still go',
+    () async {
+      final w = await _World.create();
+      addTearDown(w.dispose);
+      w.ig.post('3300000000000000071');
+      final code = w.ig.codeOf('3300000000000000071');
+      w.ig.rateLimited = true;
+      final link = await w.capture.handle(
+        Incoming(texts: ['https://www.instagram.com/reel/$code/']),
+      );
+      await w.idle();
+      expect((await w.notes.find(link.noteId!))!.status, NoteStatus.queued);
+      final calls = w.ig.requests.length;
+
+      final video = await tempFile('reel.mp4', 2048);
+      final shared = await w.capture.handle(Incoming(filePaths: [video.path]));
+      await w.idle();
+      expect((await w.notes.find(shared.noteId!))!.status, NoteStatus.ready);
+      expect((await w.notes.find(link.noteId!))!.status, NoteStatus.queued);
+      expect(w.ig.requests.length, calls, reason: 'Instagram is left alone');
+
+      // Start now doesn't get round Instagram's "slow down" either.
+      expect(
+        await w.processor.startNow(link.noteId!),
+        InstagramFailure.rateLimited.message,
+      );
+      w.ig.rateLimited = false;
+      w.clock.advance(NoteProcessor.instagramCooldown);
+      await w.settle();
+      expect((await w.notes.find(link.noteId!))!.status, NoteStatus.ready);
+    },
+  );
+
   test('a dropped connection is tried once more right away', () async {
     final w = await _World.create();
     addTearDown(w.dispose);

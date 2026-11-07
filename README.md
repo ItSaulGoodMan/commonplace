@@ -36,6 +36,8 @@ Commonplace makes the note the moment you save, so what you saved is there when 
 - **Topic shelves.** Notes sort themselves into topics. Move one with a tap if the AI got it wrong.
 - **One older note a day.** The home screen brings back something you saved before, so saves don't disappear.
 - **The exact cost under every note.** Tokens in and out, and the price in euros. On a free key it's nothing.
+- **Copy for AI chats.** One tap copies a note, with everything that was said, as Markdown. Copy all takes every note (or one topic) at once, ready to paste into ChatGPT, Gemini or any AI chat.
+- **A queue you control.** Tap Start now on any waiting reel to make it first, or Cancel on one that's stuck. One reel that can't be read never holds up the rest.
 - **Small uploads.** Videos are made smaller on the phone before they're sent, and deleted once the note is made.
 - **No account, no server.** Notes live in a database on your phone. The app talks only to Google (for the note) and Instagram (for your saves).
 

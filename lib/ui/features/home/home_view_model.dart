@@ -9,6 +9,7 @@ import '../../../data/repositories/notes_repository.dart';
 import '../../../data/repositories/settings_repository.dart';
 import '../../../domain/models/ai.dart';
 import '../../../domain/models/note.dart';
+import '../../../domain/note_markdown.dart';
 import '../../../domain/revisit.dart';
 import '../../../domain/use_cases/capture.dart';
 import '../../../domain/use_cases/note_processor.dart';
@@ -127,6 +128,24 @@ class HomeViewModel extends ChangeNotifier {
 
   bool get _isFiltering => _shelf != null || _query.trim().isNotEmpty;
 
+  /// How many notes the list shows, in words, above Copy all.
+  String get listLabel {
+    final n = notes.length;
+    final notesWord = n == 1 ? '1 note' : '$n notes';
+    if (_query.trim().isNotEmpty) return '$notesWord found';
+    return switch (_shelf) {
+      null => notesWord,
+      starredShelf => '$n starred',
+      final topic => '$notesWord in $topic',
+    };
+  }
+
+  /// [note] as Markdown with everything in it, to paste into an AI chat.
+  String copyText(Note note) => noteMarkdown(note);
+
+  /// Every note the list shows, as one Markdown text.
+  CopiedNotes copyAll() => notesMarkdown(notes);
+
   /// Today's note to come back to, unless the owner is searching or filtering.
   Note? get revisit => _isFiltering || _searching
       ? null
@@ -191,8 +210,15 @@ class HomeViewModel extends ChangeNotifier {
     shrinkProgress: _processor.shrinkProgressOf(note.id),
   );
 
-  /// Stops making [note]; it waits for Try again.
-  void stop(Note note) => _processor.stop(note.id);
+  /// Takes [note] out of the queue, or stops making it; it waits for Try
+  /// again.
+  Future<void> cancel(Note note) => _processor.cancel(note.id);
+
+  /// Makes [note] now, ahead of the others. Returns why it can't, or null.
+  Future<String?> startNow(Note note) => _processor.startNow(note.id);
+
+  /// Instagram asked to slow down; notes that need it wait a few minutes.
+  bool get instagramPaused => _processor.instagramPaused;
 
   /// What a check that found nothing new did find, in words.
   String get noNewSavesMessage => switch (_sync.newestSave) {

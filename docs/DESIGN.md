@@ -59,7 +59,7 @@ Home                         Note
 └──────────────────────────┘ └──────────────────────────┘
 ```
 
-- **Home**: revisit block, then topic shelves as a horizontal row of text chips, then a quiet list of notes separated by rules. No cards. Notes that need attention (waiting for video, failed) sit at the top of the list in their own state, with one clear action.
+- **Home**: revisit block, then topic shelves as a horizontal row of text chips, then a line with how many notes are listed and Copy all, then a quiet list of notes separated by rules, each with a copy icon on its title line. No cards. Notes that need attention (waiting for video, waiting their turn, being made, failed) sit at the top of the list in their own state: waiting ones offer Start now and Cancel, the one being made offers Cancel.
 - **Note**: reading layout. The title is in the casual voice, and the source line is natural language ("from @handle, saved 3 days ago"). Key points carry the highlighter. Actions are checkable. Your notes are editable inline. Transcript and on-screen text are collapsed at the bottom.
 - **Add sheet**: Choose a video · Choose screenshots · Paste a link · Write or paste text. The Download hint shows only when Instagram isn't connected.
 - **Welcome** (first run): three real steps that do something: Connect Instagram (a button, then "Connected as @name"), the free Gemini key (the key field inline), and "Save reels as usual".

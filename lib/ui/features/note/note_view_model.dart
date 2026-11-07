@@ -7,6 +7,7 @@ import '../../../data/repositories/instagram_repository.dart';
 import '../../../data/repositories/notes_repository.dart';
 import '../../../domain/models/ai.dart';
 import '../../../domain/models/note.dart';
+import '../../../domain/note_markdown.dart';
 import '../../../domain/use_cases/capture.dart';
 import '../../../domain/use_cases/note_processor.dart';
 import '../../core/work_status.dart';
@@ -97,8 +98,16 @@ class NoteViewModel extends ChangeNotifier {
     shrinkProgress: _processor.shrinkProgressOf(id),
   );
 
-  /// Stops making this note; it waits for Try again.
-  void stop() => _processor.stop(id);
+  /// Takes this note out of the queue, or stops making it; it waits for
+  /// Try again.
+  Future<void> cancel() => _processor.cancel(id);
+
+  /// Makes this note now, ahead of the others. Returns why it can't, or null.
+  Future<String?> startNow() => _processor.startNow(id);
+
+  /// It needs Instagram, which asked to slow down for a few minutes.
+  bool get waitsForInstagram =>
+      (_note?.needsInstagramFetch ?? false) && _processor.instagramPaused;
   bool get loaded => _loaded;
   bool get animateHighlights => _animateHighlights;
 
@@ -166,28 +175,17 @@ class NoteViewModel extends ChangeNotifier {
   }
 
   /// The note as plain Markdown, for sharing.
+  /// The short note, for sharing with a person.
   String asMarkdown() {
     final n = _note;
     if (n == null) return '';
-    final b = StringBuffer('# ${n.displayTitle}\n');
-    if (n.summary case final s? when s.isNotEmpty) b.write('\n$s\n');
-    if (n.keyPoints.isNotEmpty) {
-      b.write('\n## Key points\n');
-      for (final k in n.keyPoints) {
-        b.write('- ${k.text}\n');
-      }
-    }
-    if (n.actions.isNotEmpty) {
-      b.write('\n## Things to try\n');
-      for (final a in n.actions) {
-        b.write('- [${a.done ? 'x' : ' '}] ${a.text}\n');
-      }
-    }
-    if (n.personalNote case final p? when p.trim().isNotEmpty) {
-      b.write('\n## My notes\n$p\n');
-    }
-    if (n.sourceUrl case final u?) b.write('\nSource: $u\n');
-    return b.toString();
+    return noteMarkdown(n, withDetails: false, withMaterial: false);
+  }
+
+  /// The whole note with what it was made from, for pasting into an AI chat.
+  String asFullMarkdown() {
+    final n = _note;
+    return n == null ? '' : noteMarkdown(n);
   }
 
   @override

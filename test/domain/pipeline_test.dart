@@ -498,6 +498,117 @@ void main() {
     });
   });
 
+  group('the queue', () {
+    /// Gemini never answers the first request; the rest get the fake's
+    /// answer. [calls] counts them.
+    Future<_Harness> firstHangs(void Function() onCall) {
+      var calls = 0;
+      final real = fakeGemini();
+      return _Harness.create(
+        client: MockClient((r) async {
+          onCall();
+          if (++calls == 1) return Completer<http.Response>().future;
+          final copy = http.Request(r.method, r.url)
+            ..headers.addAll(r.headers)
+            ..bodyBytes = r.bodyBytes;
+          return http.Response.fromStream(await real.send(copy));
+        }),
+      );
+    }
+
+    Future<int> textNote(_Harness h, String text, {NoteStatus? status}) =>
+        h.notes.create(
+          status: status ?? NoteStatus.queued,
+          sourceKind: SourceKind.text,
+          caption: text,
+        );
+
+    test(
+      'Start now makes a waiting note first; the one in hand goes next',
+      () async {
+        var calls = 0;
+        final h = await firstHangs(() => calls++);
+        addTearDown(h.dispose);
+        final stuck = await textNote(h, 'Stretch before you run.');
+        final chosen = await textNote(h, 'Drink water first thing.');
+        unawaited(h.processor.kick());
+        await _until(() => calls == 1);
+
+        expect(await h.processor.startNow(chosen), isNull);
+        await _until(() async => (await h.notes.find(chosen))!.isReady);
+        expect(
+          (await h.notes.find(stuck))!.status,
+          isNot(NoteStatus.failed),
+          reason: 'it goes back in the queue',
+        );
+
+        await h.settle();
+        final first = (await h.notes.find(stuck))!;
+        expect(first.status, NoteStatus.ready);
+        expect(first.errorMessage, isNull);
+        expect(calls, 3, reason: 'the stuck one started over once');
+      },
+    );
+
+    test('Cancel takes a note out of the queue, waiting or in hand', () async {
+      var calls = 0;
+      final h = await firstHangs(() => calls++);
+      addTearDown(h.dispose);
+      final stuck = await textNote(h, 'Stretch before you run.');
+      final waiting = await textNote(h, 'Drink water first thing.');
+      unawaited(h.processor.kick());
+      await _until(() => calls == 1);
+
+      await h.processor.cancel(waiting);
+      var note = (await h.notes.find(waiting))!;
+      expect(note.status, NoteStatus.failed);
+      expect(note.errorMessage, WorkStopped.message);
+
+      await h.processor.cancel(stuck);
+      await h.settle();
+      note = (await h.notes.find(stuck))!;
+      expect(note.status, NoteStatus.failed);
+      expect(note.errorMessage, WorkStopped.message);
+      expect(calls, 1);
+
+      // Not tried again on its own, only when the owner asks.
+      await h.processor.retryTransient();
+      await h.settle();
+      expect((await h.notes.find(waiting))!.status, NoteStatus.failed);
+      await h.processor.retry(waiting);
+      await h.settle();
+      expect((await h.notes.find(waiting))!.status, NoteStatus.ready);
+    });
+
+    test('a note cut off when the app closed goes after the others', () async {
+      final h = await _Harness.create();
+      addTearDown(h.dispose);
+      // As if the app died while making it, maybe because of it.
+      final cutOff = await textNote(
+        h,
+        'Was being made when the app closed.',
+        status: NoteStatus.processing,
+      );
+      final waiting = await textNote(h, 'Was waiting its turn.');
+      final order = <int>[];
+      void record() {
+        for (final id in [cutOff, waiting]) {
+          if (h.processor.stageOf(id) != null && !order.contains(id)) {
+            order.add(id);
+          }
+        }
+      }
+
+      h.processor.addListener(record);
+      await h.processor.resume();
+      await h.settle();
+      h.processor.removeListener(record);
+
+      expect(order, [waiting, cutOff]);
+      expect((await h.notes.find(cutOff))!.status, NoteStatus.ready);
+    });
+  });
+
   group('making videos smaller', () {
     test(
       'the smaller copy is what goes to Gemini, and is cleaned up',
@@ -564,4 +675,12 @@ class _FakeShrinker extends VideoShrinker {
     made.add(out);
     return out;
   }
+}
+
+/// Waits for [done], a little at a time.
+Future<void> _until(FutureOr<bool> Function() done) async {
+  for (var i = 0; i < 400 && !await done(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  expect(await done(), isTrue, reason: 'never happened');
 }
